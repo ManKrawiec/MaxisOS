@@ -1,16 +1,19 @@
 # MaxisOS
 
-MaxisOS is a Linux From Scratch–style distribution blueprint that targets a simple, rolling, terminal‑oriented system inspired by Arch’s philosophy but built from scratch.
+MaxisOS is a Linux From Scratch–style distribution project that aims for a simple, rolling, terminal‑oriented system inspired by Arch’s philosophy, but built from source.
 
-This repository provides:
-- Base system build scripts (LFS style)
-- Kernel build/configure/install scripts
-- `mkpkg` package manager
-- `mkbuild` PKGBUILD‑style build tool
-- Example packages and local repos
-- Live ISO build script
-- `maxinstall` terminal installer
-- Full system documentation
+## Status: Work in Progress
+This repository is under active development. Expect incomplete features, breaking changes, and placeholder tooling while the base system is being built out.
+
+## What This Repo Contains
+- LFS‑style base system scaffolding
+- Kernel configure/build/install scripts
+- `mkpkg` package manager and `.mkpkg` format
+- `mkbuild` PKGBUILD‑style builder
+- Example PKGBUILDs and local repo layout
+- `maxinstall` terminal installer (prototype)
+- Live ISO build script (prototype)
+- Full documentation and progress tracking
 
 ## Quick Start (Dev)
 ```
@@ -20,4 +23,9 @@ This repository provides:
 ./kernel/install-kernel.sh /path/to/linux /tmp/maxisos-root
 ```
 
-See `docs/MAXISOS_GUIDE.md` for the full build, install, and QEMU instructions.
+## Documentation
+- Main guide: `docs/MAXISOS_GUIDE.md`
+- Progress: `docs/PROGRESS.md`
+
+## License
+MIT License. See `LICENSE`.
