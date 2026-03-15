@@ -1,0 +1,24 @@
+# Build artifacts
+/build/
+/iso/iso-build/
+*.mkpkg
+*.iso
+*.img
+
+# Object files and binaries
+*.o
+*.a
+*.so
+*.elf
+*.bin
+
+# Logs and temp
+*.log
+*.tmp
+
+# Python
+__pycache__/
+*.pyc
+
+# Misc
+.DS_Store
