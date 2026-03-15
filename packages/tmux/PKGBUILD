@@ -1,0 +1,19 @@
+pkgname=tmux
+pkgver=3.4
+pkgrel=1
+pkgdesc="Terminal multiplexer"
+arch=("x86_64")
+depends=("libevent" "ncurses")
+source=("https://github.com/tmux/tmux/releases/download/${pkgver}/tmux-${pkgver}.tar.gz")
+sha256sums=("SKIP")
+
+build() {
+  cd "$srcdir/tmux-${pkgver}"
+  ./configure --prefix=/usr
+  make
+}
+
+package() {
+  cd "$srcdir/tmux-${pkgver}"
+  make DESTDIR="$pkgdir" install
+}

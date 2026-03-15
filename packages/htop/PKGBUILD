@@ -1,0 +1,20 @@
+pkgname=htop
+pkgver=3.3.0
+pkgrel=1
+pkgdesc="Interactive process viewer"
+arch=("x86_64")
+depends=("ncurses")
+source=("https://github.com/htop-dev/htop/archive/refs/tags/${pkgver}.tar.gz")
+sha256sums=("SKIP")
+
+build() {
+  cd "$srcdir/htop-${pkgver}"
+  ./autogen.sh || true
+  ./configure --prefix=/usr
+  make
+}
+
+package() {
+  cd "$srcdir/htop-${pkgver}"
+  make DESTDIR="$pkgdir" install
+}

@@ -1,0 +1,21 @@
+pkgname=gcc
+pkgver=13.2.0
+pkgrel=1
+pkgdesc="GNU Compiler Collection"
+arch=("x86_64")
+depends=("glibc" "gmp" "mpfr" "mpc")
+source=("https://ftp.gnu.org/gnu/gcc/gcc-${pkgver}/gcc-${pkgver}.tar.xz")
+sha256sums=("SKIP")
+
+build() {
+  cd "$srcdir"
+  mkdir -p "$builddir/gcc-build"
+  cd "$builddir/gcc-build"
+  "$srcdir/gcc-${pkgver}/configure" --prefix=/usr --enable-languages=c,c++ --disable-multilib
+  make
+}
+
+package() {
+  cd "$builddir/gcc-build"
+  make DESTDIR="$pkgdir" install
+}

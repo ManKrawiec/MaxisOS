@@ -1,0 +1,19 @@
+pkgname=vim
+pkgver=9.1.0500
+pkgrel=1
+pkgdesc="Vi Improved"
+arch=("x86_64")
+depends=("ncurses")
+source=("https://github.com/vim/vim/archive/refs/tags/v${pkgver}.tar.gz")
+sha256sums=("SKIP")
+
+build() {
+  cd "$srcdir/vim-${pkgver}"
+  ./configure --prefix=/usr --with-tlib=ncurses
+  make
+}
+
+package() {
+  cd "$srcdir/vim-${pkgver}"
+  make DESTDIR="$pkgdir" install
+}

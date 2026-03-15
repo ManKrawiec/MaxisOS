@@ -1,0 +1,18 @@
+pkgname=git
+pkgver=2.44.0
+pkgrel=1
+pkgdesc="Distributed version control system"
+arch=("x86_64")
+depends=("curl" "openssl" "zlib")
+source=("https://www.kernel.org/pub/software/scm/git/git-${pkgver}.tar.xz")
+sha256sums=("SKIP")
+
+build() {
+  cd "$srcdir/git-${pkgver}"
+  make prefix=/usr all
+}
+
+package() {
+  cd "$srcdir/git-${pkgver}"
+  make prefix=/usr DESTDIR="$pkgdir" install
+}

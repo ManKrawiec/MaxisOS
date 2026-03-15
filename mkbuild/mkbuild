@@ -1,0 +1,159 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  echo "Usage: mkbuild [--no-install] <path-to-PKGBUILD>"
+}
+
+INSTALL=1
+if [[ "${1:-}" == "--no-install" ]]; then
+  INSTALL=0
+  shift
+fi
+
+PKGBUILD="${1:-}"
+if [[ -z "$PKGBUILD" || ! -f "$PKGBUILD" ]]; then
+  usage
+  exit 1
+fi
+
+# Default WORKDIR to PKGBUILD directory if not provided
+if [[ -z "${WORKDIR:-}" ]]; then
+  WORKDIR="$(cd "$(dirname "$PKGBUILD")" && pwd)"
+fi
+
+PKGDIR="$WORKDIR/pkg"
+SRCDIR="$WORKDIR/src"
+OUTDIR="$WORKDIR/out"
+FILESDIR="$WORKDIR/files"
+BUILDDIR="$WORKDIR/build"
+
+mkdir -p "$PKGDIR" "$SRCDIR" "$OUTDIR" "$FILESDIR" "$BUILDDIR"
+
+# PKGBUILD compatibility vars
+srcdir="$SRCDIR"
+pkgdir="$PKGDIR"
+builddir="$BUILDDIR"
+
+# Source PKGBUILD
+source "$PKGBUILD"
+
+: "${pkgname:?pkgname missing}"
+: "${pkgver:?pkgver missing}"
+: "${pkgrel:=1}"
+
+fetch_sources() {
+  if [[ ${#source[@]} -eq 0 ]]; then
+    return 0
+  fi
+
+  for s in "${source[@]}"; do
+    local dest="$SRCDIR/$(basename "$s")"
+    if [[ -f "$dest" ]]; then
+      continue
+    fi
+    echo "Downloading $s"
+    if command -v curl >/dev/null 2>&1; then
+      curl -L -o "$dest" "$s"
+    elif command -v wget >/dev/null 2>&1; then
+      wget -O "$dest" "$s"
+    else
+      echo "curl or wget required"
+      exit 1
+    fi
+  done
+}
+
+verify_sources() {
+  if [[ ${#sha256sums[@]} -eq 0 ]]; then
+    return 0
+  fi
+
+  local i=0
+  for s in "${source[@]}"; do
+    local f="$SRCDIR/$(basename "$s")"
+    local sum="${sha256sums[$i]}"
+    if [[ "$sum" == "SKIP" ]]; then
+      i=$((i+1))
+      continue
+    fi
+    echo "$sum  $f" | sha256sum -c -
+    i=$((i+1))
+  done
+}
+
+extract_sources() {
+  for s in "${source[@]}"; do
+    local f="$SRCDIR/$(basename "$s")"
+    case "$f" in
+      *.tar.gz|*.tgz|*.tar.xz|*.tar.bz2|*.tar.zst)
+        tar -xf "$f" -C "$SRCDIR"
+        ;;
+      *)
+        ;;
+    esac
+  done
+}
+
+build_pkg() {
+  if declare -f prepare >/dev/null 2>&1; then
+    prepare
+  fi
+  if declare -f build >/dev/null 2>&1; then
+    build
+  fi
+  if declare -f package >/dev/null 2>&1; then
+    package
+  else
+    echo "PKGBUILD missing package()"
+    exit 1
+  fi
+}
+
+make_metadata() {
+  cat > "$WORKDIR/metadata.json" <<EOM
+{
+  "name": "$pkgname",
+  "version": "$pkgver",
+  "release": "$pkgrel",
+  "arch": "${arch:-x86_64}",
+  "desc": "${pkgdesc:-}",
+  "depends": [${depends:+"$(printf '"%s",' "${depends[@]}" | sed 's/,$//')"}]
+}
+EOM
+}
+
+package_mkpkg() {
+  local out="$OUTDIR/${pkgname}.mkpkg"
+  rm -f "$out"
+
+  rm -rf "$FILESDIR"
+  mkdir -p "$FILESDIR"
+  (cd "$PKGDIR" && tar -cf - .) | (cd "$FILESDIR" && tar -xpf -)
+
+  local extra=()
+  if [[ -n "${install:-}" && -f "$install" ]]; then
+    cp "$install" "$WORKDIR/install.sh"
+    extra+=("install.sh")
+  fi
+
+  tar -cf "$out" -C "$WORKDIR" metadata.json files ${extra[*]:+${extra[*]}}
+  echo "Created $out"
+}
+
+cleanup() {
+  rm -f "$WORKDIR/metadata.json"
+  rm -f "$WORKDIR/install.sh"
+}
+
+fetch_sources
+verify_sources
+extract_sources
+build_pkg
+make_metadata
+package_mkpkg
+cleanup
+
+if [[ "$INSTALL" -eq 1 ]]; then
+  sudo mkpkg install "$OUTDIR/${pkgname}.mkpkg"
+fi

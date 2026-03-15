@@ -1,0 +1,18 @@
+pkgname=neovim
+pkgver=0.10.0
+pkgrel=1
+pkgdesc="Hyperextensible Vim-based text editor"
+arch=("x86_64")
+depends=("cmake" "ninja" "gettext" "libuv" "luajit" "msgpack-c")
+source=("https://github.com/neovim/neovim/archive/refs/tags/v${pkgver}.tar.gz")
+sha256sums=("SKIP")
+
+build() {
+  cd "$srcdir/neovim-${pkgver}"
+  make CMAKE_BUILD_TYPE=Release CMAKE_INSTALL_PREFIX=/usr
+}
+
+package() {
+  cd "$srcdir/neovim-${pkgver}"
+  make DESTDIR="$pkgdir" install
+}

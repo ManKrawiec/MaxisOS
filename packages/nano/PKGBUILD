@@ -1,0 +1,19 @@
+pkgname=nano
+pkgver=8.0
+pkgrel=1
+pkgdesc="Nano text editor"
+arch=("x86_64")
+depends=("ncurses")
+source=("https://www.nano-editor.org/dist/v8/nano-${pkgver}.tar.xz")
+sha256sums=("SKIP")
+
+build() {
+  cd "$srcdir/nano-${pkgver}"
+  ./configure --prefix=/usr
+  make
+}
+
+package() {
+  cd "$srcdir/nano-${pkgver}"
+  make DESTDIR="$pkgdir" install
+}

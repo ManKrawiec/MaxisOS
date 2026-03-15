@@ -1,0 +1,14 @@
+/
+|-- bin
+|-- boot
+|-- dev
+|-- etc
+|-- home
+|-- lib
+|-- proc
+|-- root
+|-- sbin
+|-- sys
+|-- tmp
+|-- usr
+|-- var
