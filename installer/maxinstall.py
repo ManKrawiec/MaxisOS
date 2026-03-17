@@ -39,12 +39,33 @@ def run(cmd: List[str], execute: bool):
     else:
         console.print(f"[yellow]DRY[/yellow] {' '.join(cmd)}")
 
+def show_disks():
+    console.print("\n[bold]Available disks[/bold]")
+    try:
+        out = subprocess.check_output(["lsblk", "-d", "-o", "NAME,SIZE,MODEL"], text=True)
+        console.print(out.strip())
+    except Exception as exc:
+        console.print(f"[yellow]WARN[/yellow] Unable to list disks: {exc}")
+
+    try:
+        out = subprocess.check_output(["lsblk", "-f"], text=True)
+        console.print(out.strip())
+    except Exception as exc:
+        console.print(f"[yellow]WARN[/yellow] Unable to list filesystems: {exc}")
+
+def part_path(disk: str, number: int) -> str:
+    if disk[-1].isdigit():
+        return f"{disk}p{number}"
+    return f"{disk}{number}"
+
 
 def main():
     execute = "--execute" in sys.argv
 
     console.print("MaxisOS Live Environment")
     console.print("Terminal installer: maxinstall\n")
+
+    show_disks()
 
     language = Prompt.ask("Language", default="en_US.UTF-8")
     keyboard = Prompt.ask("Keyboard layout", default="us")
@@ -86,8 +107,8 @@ def main():
         run(["sgdisk", "--zap-all", plan.disk], execute)
         run(["sgdisk", "-n", "1:0:+512M", "-t", "1:ef00", plan.disk], execute)
         run(["sgdisk", "-n", "2:0:0", "-t", "2:8300", plan.disk], execute)
-        boot_part = f"{plan.disk}1"
-        root_part = f"{plan.disk}2"
+        boot_part = part_path(plan.disk, 1)
+        root_part = part_path(plan.disk, 2)
     else:
         console.print("Manual partitioning selected. Please partition and then enter boot/root partitions.")
         boot_part = Prompt.ask("Boot partition (e.g. /dev/sda1)")
@@ -99,9 +120,15 @@ def main():
         run(["mkfs.btrfs", root_part], execute)
 
     run(["mkfs.fat", "-F", "32", boot_part], execute)
+    run(["mkdir", "-p", plan.mountpoint], execute)
     run(["mount", root_part, plan.mountpoint], execute)
     run(["mkdir", "-p", f"{plan.mountpoint}/boot"], execute)
     run(["mount", boot_part, f"{plan.mountpoint}/boot"], execute)
+
+    # Prepare mkpkg repo config inside target root
+    run(["mkdir", "-p", f"{plan.mountpoint}/etc/mkpkg"], execute)
+    run(["mkdir", "-p", f"{plan.mountpoint}/repo/core", f"{plan.mountpoint}/repo/extra", f"{plan.mountpoint}/repo/community"], execute)
+    run(["/bin/sh", "-c", f"printf '%s\\n' /repo/core /repo/extra /repo/community > {plan.mountpoint}/etc/mkpkg/repos.conf"], execute)
 
     # Install base packages via mkpkg (assumes repos are mounted in /repo)
     base_pkgs = [
@@ -110,21 +137,35 @@ def main():
         "nano", "vim", "sudo", "networkmanager"
     ]
     for p in base_pkgs:
-        run(["mkpkg", "install", p], execute)
+        run(["mkpkg", "--root", plan.mountpoint, "install", p], execute)
 
     if plan.arch_imports == "yes":
         arch_pkgs = ["htop", "tmux", "git", "neovim", "python", "gcc", "nano", "vim"]
         for p in arch_pkgs:
-            run(["/tools/import-arch-pkgbuild.sh", p, f"/repo/extra-sources/{p}", "packages", "extra"], execute)
+            run(["/scripts/import-arch-pkgbuild.sh", p, f"/repo/extra-sources/{p}", "packages", "extra"], execute)
             run(["mkbuild", "--no-install", f"/repo/extra-sources/{p}/PKGBUILD"], execute)
             run(["cp", f"/repo/extra-sources/{p}/out/{p}.mkpkg", "/repo/extra/"], execute)
-            run(["mkpkg", "install", p], execute)
+            run(["mkpkg", "--root", plan.mountpoint, "install", p], execute)
 
     # Kernel install (expects kernel already built)
     run(["/kernel/install-kernel.sh", "/kernel/src", plan.mountpoint], execute)
 
+    # Locale, timezone, keyboard
+    run(["mkdir", "-p", f"{plan.mountpoint}/etc"], execute)
+    run(["/bin/sh", "-c", f"echo '{plan.language} UTF-8' > {plan.mountpoint}/etc/locale.gen"], execute)
+    run(["/bin/sh", "-c", f"echo 'LANG={plan.language}' > {plan.mountpoint}/etc/locale.conf"], execute)
+    run(["/bin/sh", "-c", f"echo 'KEYMAP={plan.keyboard}' > {plan.mountpoint}/etc/vconsole.conf"], execute)
+    run(["/bin/sh", "-c", f"echo '{plan.timezone}' > {plan.mountpoint}/etc/timezone"], execute)
+    run(["chroot", plan.mountpoint, "ln", "-sf", f"/usr/share/zoneinfo/{plan.timezone}", "/etc/localtime"], execute)
+    run(["chroot", plan.mountpoint, "locale-gen"], execute)
+
+    # Users
+    run(["chroot", plan.mountpoint, "/bin/sh", "-c", f"echo 'root:{plan.root_password}' | chpasswd"], execute)
+    run(["chroot", plan.mountpoint, "useradd", "-m", "-G", "wheel", "-s", "/bin/bash", plan.username], execute)
+    run(["chroot", plan.mountpoint, "/bin/sh", "-c", f"echo '{plan.username}:{plan.user_password}' | chpasswd"], execute)
+
     # Generate fstab
-    run(["genfstab", "-U", plan.mountpoint], execute)
+    run(["/bin/sh", "-c", f"genfstab -U {plan.mountpoint} > {plan.mountpoint}/etc/fstab"], execute)
 
     # Bootloader
     if plan.bootloader == "grub":

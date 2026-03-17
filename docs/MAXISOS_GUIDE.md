@@ -49,6 +49,7 @@ Commands:
 - `mkpkg update`
 - `mkpkg search <term>`
 - `mkpkg list`
+- `mkpkg --root /mnt install <pkg>` (install into target root)
 
 ## 3. Installing Packages
 
@@ -80,7 +81,7 @@ MaxisOS can import PKGBUILDs from Arch to speed up packaging. This does not use 
 
 Example:
 ```
-tools/import-arch-pkgbuild.sh htop packages/htop packages extra
+scripts/import-arch-pkgbuild.sh htop packages/htop packages extra
 mkbuild --no-install packages/htop/PKGBUILD
 ```
 

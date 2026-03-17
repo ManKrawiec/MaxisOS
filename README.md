@@ -25,6 +25,11 @@ This repository is under active development. Expect incomplete features, breakin
 
 ## Documentation
 - Main guide: `docs/MAXISOS_GUIDE.md`
+- Architecture: `docs/architecture.md`
+- Kernel: `docs/kernel.md`
+- Package manager: `docs/package-manager.md`
+- Installer: `docs/installer.md`
+- Recovery: `docs/recovery.md`
 - Progress: `docs/PROGRESS.md`
 
 ## License

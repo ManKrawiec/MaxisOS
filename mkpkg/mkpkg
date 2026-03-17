@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+ROOT="/"
 DB_ROOT="/var/lib/mkpkg"
 REPO_CONF="/etc/mkpkg/repos.conf"
 CACHE="/var/cache/mkpkg"
 
 usage() {
   cat <<'EOM'
-Usage: mkpkg <command> [args]
+Usage: mkpkg [--root <path>] <command> [args]
 
 Commands:
   install <pkg|path.mkpkg>
@@ -26,11 +27,11 @@ require_root() {
 }
 
 repos() {
-  if [[ ! -f "$REPO_CONF" ]]; then
-    echo "Repo config missing: $REPO_CONF"
+  if [[ ! -f "$ROOT$REPO_CONF" ]]; then
+    echo "Repo config missing: $ROOT$REPO_CONF"
     exit 1
   fi
-  grep -vE '^\s*#' "$REPO_CONF" | awk 'NF'
+  grep -vE '^\s*#' "$ROOT$REPO_CONF" | awk 'NF'
 }
 
 find_pkg_in_repos() {
@@ -60,7 +61,7 @@ install_pkg() {
     exit 1
   fi
 
-  mkdir -p "$CACHE" "$DB_ROOT/installed"
+  mkdir -p "$ROOT$CACHE" "$ROOT$DB_ROOT/installed"
 
   local tmp
   tmp="$(mktemp -d)"
@@ -76,19 +77,19 @@ install_pkg() {
   name="$(grep -oE '\"name\"\\s*:\\s*\"[^\"]+\"' \"$tmp/metadata.json\" | head -1 | sed -E 's/.*\"name\"\\s*:\\s*\"([^\"]+)\".*/\\1/')"
 
   echo "Installing $name"
-  mkdir -p "$DB_ROOT/installed/$name"
-  cp "$tmp/metadata.json" "$DB_ROOT/installed/$name/metadata.json"
+  mkdir -p "$ROOT$DB_ROOT/installed/$name"
+  cp "$tmp/metadata.json" "$ROOT$DB_ROOT/installed/$name/metadata.json"
 
   if [[ -d "$tmp/files" ]]; then
-    (cd "$tmp/files" && find . -type f -o -type l) > "$DB_ROOT/installed/$name/files.lst"
-    (cd "$tmp/files" && tar -cf - .) | (cd / && tar -xpf -)
+    (cd "$tmp/files" && find . -type f -o -type l) > "$ROOT$DB_ROOT/installed/$name/files.lst"
+    (cd "$tmp/files" && tar -cf - .) | (cd "$ROOT" && tar -xpf -)
   else
     echo "No files/ directory in package"
   fi
 
   if [[ -f "$tmp/install.sh" ]]; then
-    cp "$tmp/install.sh" "$DB_ROOT/installed/$name/install.sh"
-    bash "$tmp/install.sh" "install" "/"
+    cp "$tmp/install.sh" "$ROOT$DB_ROOT/installed/$name/install.sh"
+    bash "$tmp/install.sh" "install" "$ROOT"
   fi
 
   rm -rf "$tmp"
@@ -96,8 +97,8 @@ install_pkg() {
 
 remove_pkg() {
   local name="$1"
-  local meta="$DB_ROOT/installed/$name/metadata.json"
-  local files="$DB_ROOT/installed/$name/files.lst"
+  local meta="$ROOT$DB_ROOT/installed/$name/metadata.json"
+  local files="$ROOT$DB_ROOT/installed/$name/files.lst"
 
   if [[ ! -f "$meta" ]]; then
     echo "Not installed: $name"
@@ -106,21 +107,21 @@ remove_pkg() {
 
   if [[ -f "$files" ]]; then
     while read -r f; do
-      rm -f "/${f#./}"
+      rm -f "$ROOT/${f#./}"
     done < "$files"
   fi
 
-  if [[ -f "$DB_ROOT/installed/$name/install.sh" ]]; then
-    bash "$DB_ROOT/installed/$name/install.sh" "remove" "/"
+  if [[ -f "$ROOT$DB_ROOT/installed/$name/install.sh" ]]; then
+    bash "$ROOT$DB_ROOT/installed/$name/install.sh" "remove" "$ROOT"
   fi
 
-  rm -rf "$DB_ROOT/installed/$name"
+  rm -rf "$ROOT$DB_ROOT/installed/$name"
   echo "Removed $name"
 }
 
 update_db() {
-  mkdir -p "$CACHE"
-  echo "Repositories in $REPO_CONF are treated as local filesystem repos."
+  mkdir -p "$ROOT$CACHE"
+  echo "Repositories in $ROOT$REPO_CONF are treated as local filesystem repos."
   echo "To update, synchronize your /repo trees with your build outputs."
 }
 
@@ -133,8 +134,38 @@ search_pkgs() {
 }
 
 list_installed() {
-  ls "$DB_ROOT/installed" 2>/dev/null || true
+  ls "$ROOT$DB_ROOT/installed" 2>/dev/null || true
 }
+
+while [[ "${1:-}" == --* ]]; do
+  case "$1" in
+    --root)
+      ROOT="${2:-}"
+      shift 2
+      ;;
+    --root=*)
+      ROOT="${1#*=}"
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1"
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+ROOT="${ROOT%/}"
+if [[ -z "$ROOT" ]]; then
+  ROOT="/"
+fi
+DB_ROOT="/var/lib/mkpkg"
+REPO_CONF="/etc/mkpkg/repos.conf"
+CACHE="/var/cache/mkpkg"
 
 cmd="${1:-}"
 case "$cmd" in
