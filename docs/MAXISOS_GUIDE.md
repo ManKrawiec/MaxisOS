@@ -4,8 +4,11 @@ This guide describes the structure, build workflow, and usage of MaxisOS.
 
 ## 1. System Structure
 
-MaxisOS follows a classic Unix hierarchy:
+MaxisOS follows a classic Unix hierarchy.
 
+Architecture: `x86_64`
+
+Filesystem layout:
 /
 |-- bin
 |-- boot
@@ -13,9 +16,15 @@ MaxisOS follows a classic Unix hierarchy:
 |-- etc
 |-- home
 |-- lib
+|-- lib64
+|-- media
+|-- mnt
+|-- opt
 |-- proc
 |-- root
+|-- run
 |-- sbin
+|-- srv
 |-- sys
 |-- tmp
 |-- usr
@@ -26,6 +35,66 @@ Default shell prompt: `maxis@maxisos:~$`
 Default language: English (`en_US.UTF-8`)
 
 Language, keyboard layout, and timezone are chosen during installation.
+MaxisOS supports multiple languages, keyboard layouts, and timezones.
+
+## 1.1 Base System Utilities
+
+Core tools:
+- bash, coreutils, grep, sed, gawk, tar, gzip, xz, diffutils, findutils, file, which
+
+Editors:
+- nano, vim
+
+System utilities:
+- sudo, shadow, util-linux
+
+Filesystem operations:
+- ls, cp, mv, rm, touch, mkdir, rmdir, cat, less, chmod, chown, ln
+- mount, umount, lsblk, fdisk, blkid
+
+Filesystems listed in `/etc/fstab` are mounted automatically by the init scripts.
+
+## 1.2 Device Management
+
+Devices live under `/dev`. MaxisOS supports `udev` or `mdev` for device management.
+
+## 1.3 Process Management
+
+Process tools: `ps`, `top`, `kill`, `killall`.
+
+## 1.4 User Management
+
+Commands: `useradd`, `userdel`, `passwd`, `groupadd`, `groups`.
+
+Config files:
+- `/etc/passwd`
+- `/etc/shadow`
+- `/etc/group`
+
+## 1.5 Network Support
+
+Tools: `ip`, `ping`, `curl`, `wget`.
+
+Network management: NetworkManager (or equivalent).
+
+Config files:
+- `/etc/hosts`
+- `/etc/resolv.conf`
+
+## 1.6 Init System
+
+MaxisOS uses a simple init system (BusyBox init or SysV init).
+
+Init scripts are located in `/etc/init.d/`:
+- mounting filesystems
+- network
+- logging
+
+## 1.7 Logging
+
+Logs are stored under `/var/log`, e.g.:
+- `/var/log/messages`
+- `/var/log/dmesg`
 
 ## 2. Package Manager (mkpkg)
 
@@ -47,6 +116,7 @@ Commands:
 - `mkpkg install <pkg|path.mkpkg>`
 - `mkpkg remove <pkg>`
 - `mkpkg update`
+- `mkpkg verify`
 - `mkpkg search <term>`
 - `mkpkg list`
 - `mkpkg --root /mnt install <pkg>` (install into target root)
@@ -59,6 +129,21 @@ Commands:
 ```
 mkpkg install <pkgname>
 ```
+
+## 3.1 Default MaxisOS Packages
+
+Example native packages (meta or simple packages):
+- maxis-base
+- maxis-utils
+- maxis-network
+- nano
+- vim
+- htop
+- git
+- python
+- gcc
+- neovim
+- tmux
 
 ## 4. Creating Packages
 
@@ -86,6 +171,28 @@ mkbuild --no-install packages/htop/PKGBUILD
 ```
 
 This requires network access and `curl` or `wget`.
+
+## 4.2 Arch Linux Compatibility (pacman)
+
+MaxisOS includes a separate compatibility installer for Arch packages.
+This does **not** use `mkpkg` and stores its database under `/var/lib/pacman`.
+
+Mirrorlist:
+```
+/etc/pacman.d/mirrorlist
+```
+
+Install Arch packages:
+```
+pacman -S <pkgname>
+```
+
+Compatibility checks:
+- glibc version
+- library-style dependencies
+- filesystem paths inside the package
+
+If a mismatch is detected, a warning is printed before installation.
 
 ## 5. Rebuilding the Kernel
 
@@ -134,6 +241,11 @@ mkpkg install <pkgname>
 ```
 3. If broken deps, rebuild with mkbuild.
 
+## 8.1 Debugging Package Conflicts (Arch Compatibility)
+- Check `/var/lib/pacman/local` for installed Arch packages.
+- If files overlap with native packages, remove the conflicting Arch package first.
+- Reinstall native packages with `mkpkg install <pkg>`.
+
 ## 9. Updating the System
 
 MaxisOS is rolling release. Update by:
@@ -158,7 +270,7 @@ cd iso
 ./build-iso.sh
 ```
 This script expects a built kernel at `kernel/bzImage` and uses `xorriso`.
-On boot, the live environment shows: `MaxisOS Live Environment` and provides the commands `maxinstall`, `mkpkg`, and `bash`.
+On boot, the live environment shows: `MaxisOS Live Environment` and provides the commands `maxinstall`, `mkpkg`, `pacman`, and `bash`.
 
 ## 12. QEMU Instructions
 
@@ -195,7 +307,7 @@ Steps:
 5. Partitioning (auto/manual)
 6. Filesystem (ext4/btrfs)
 7. Mount points
-8. Bootloader (GRUB)
+8. Boot mode (UEFI/BIOS) and GRUB install
 9. Root password
 10. User creation
 11. Optional desktop (none/XFCE/KDE)

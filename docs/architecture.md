@@ -19,6 +19,7 @@ MaxisOS is a Linux From Scratch (LFS) style system with an Arch-like workflow.
 - installer/: terminal installer (maxinstall)
 - iso/: live ISO build system
 - scripts/: helper utilities (e.g. PKGBUILD import)
+- arch-compat/: Arch Linux compatibility layer (pacman)
 - docs/: documentation
 
 ## Build Flow (High Level)
@@ -33,6 +34,12 @@ MaxisOS is a Linux From Scratch (LFS) style system with an Arch-like workflow.
 - Source recipes use PKGBUILD format.
 - mkbuild builds into a staging dir and produces .mkpkg.
 - mkpkg installs .mkpkg into a target root.
+- pacman installs Arch .pkg.tar.zst via the compatibility layer.
+
+## Init and Services
+MaxisOS targets a simple init system (BusyBox init or SysV init) with
+service scripts under `/etc/init.d/` for mounting filesystems, networking,
+and logging.
 
 ## Rolling Release
 - Rebuild packages when upstream changes.

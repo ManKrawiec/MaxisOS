@@ -1,0 +1,286 @@
+#!/usr/bin/env python3
+import os
+import re
+import sys
+import subprocess
+import urllib.request
+from typing import Dict, List, Tuple
+
+ARCH = os.environ.get("ARCH", "x86_64")
+REPOS = ["core", "extra", "community"]
+MIRRORLIST = "/etc/pacman.d/mirrorlist"
+DB_ROOT = "/var/lib/pacman"
+SYNC_DIR = os.path.join(DB_ROOT, "sync")
+LOCAL_DIR = os.path.join(DB_ROOT, "local")
+CACHE_DIR = os.path.join(DB_ROOT, "cache")
+
+ALLOWED_TOP = {
+    "bin", "boot", "dev", "etc", "home", "lib", "lib64", "opt",
+    "root", "run", "sbin", "srv", "sys", "tmp", "usr", "var"
+}
+
+
+def usage():
+    print("Usage: pacman -S <package>")
+    sys.exit(1)
+
+
+def read_mirror() -> str:
+    if not os.path.exists(MIRRORLIST):
+        raise SystemExit(f"Missing mirrorlist: {MIRRORLIST}")
+    with open(MIRRORLIST, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("Server"):
+                _, url = line.split("=", 1)
+                return url.strip()
+    raise SystemExit("No Server entry found in mirrorlist")
+
+
+def download(url: str, dest: str):
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    with urllib.request.urlopen(url) as r, open(dest, "wb") as out:
+        out.write(r.read())
+
+
+def sync_repo_db(mirror: str, repo: str) -> str:
+    base = mirror.replace("$repo", repo).replace("$arch", ARCH)
+    db_url = f"{base}/{repo}.db"
+    db_path = os.path.join(SYNC_DIR, f"{repo}.db")
+    if not os.path.exists(db_path):
+        print(f"Downloading repo DB: {db_url}")
+        download(db_url, db_path)
+    return db_path
+
+
+def parse_desc(text: str) -> Dict[str, List[str]]:
+    out: Dict[str, List[str]] = {}
+    key = None
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith("%") and line.endswith("%"):
+            key = line.strip("%")
+            out[key] = []
+            continue
+        if key:
+            out[key].append(line)
+    return out
+
+
+def parse_repo_db(db_path: str) -> Dict[str, Dict[str, List[str]]]:
+    pkgs: Dict[str, Dict[str, List[str]]] = {}
+    with tarfile.open(db_path, "r") as tf:
+        for member in tf.getmembers():
+            if not member.name.endswith("/desc"):
+                continue
+            f = tf.extractfile(member)
+            if not f:
+                continue
+            desc = parse_desc(f.read().decode("utf-8", errors="ignore"))
+            name = desc.get("NAME", [""])[0]
+            if name:
+                pkgs[name] = desc
+    return pkgs
+
+
+def get_installed() -> Dict[str, str]:
+    installed = {}
+    if not os.path.isdir(LOCAL_DIR):
+        return installed
+    for entry in os.listdir(LOCAL_DIR):
+        desc_path = os.path.join(LOCAL_DIR, entry, "desc")
+        if not os.path.isfile(desc_path):
+            continue
+        with open(desc_path, "r", encoding="utf-8") as f:
+            desc = parse_desc(f.read())
+        name = desc.get("NAME", [""])[0]
+        ver = desc.get("VERSION", [""])[0]
+        if name:
+            installed[name] = ver
+    return installed
+
+
+def parse_dep_name(dep: str) -> Tuple[str, str]:
+    m = re.split(r"(<=|>=|=|<|>)", dep, maxsplit=1)
+    if len(m) >= 1:
+        name = m[0]
+    else:
+        name = dep
+    return name.strip(), dep
+
+
+def get_glibc_version() -> str:
+    try:
+        out = os.popen("getconf GNU_LIBC_VERSION").read().strip()
+        if out:
+            return out.split()[-1]
+    except Exception:
+        pass
+    try:
+        out = os.popen("ldd --version").read().splitlines()[0]
+        m = re.search(r"(\d+\.\d+)", out)
+        if m:
+            return m.group(1)
+    except Exception:
+        pass
+    return ""
+
+
+def version_lt(a: str, b: str) -> bool:
+    def split(v):
+        return [int(x) for x in re.split(r"[._-]", v) if x.isdigit()]
+    return split(a) < split(b)
+
+
+def check_compatibility(dep_list: List[str], pkg_files: List[str]):
+    warnings = []
+
+    glibc_ver = get_glibc_version()
+    for dep in dep_list:
+        name, raw = parse_dep_name(dep)
+        if name == "glibc" and any(op in raw for op in [">=", "=", ">", "<", "<="]):
+            m = re.search(r"([0-9]+\.[0-9]+)", raw)
+            if m and glibc_ver:
+                req = m.group(1)
+                if version_lt(glibc_ver, req):
+                    warnings.append(f"glibc {glibc_ver} < required {req}")
+
+        if ".so" in name or ".so" in raw:
+            warnings.append(f"Library dependency may be missing: {raw}")
+
+    for p in pkg_files:
+        if p.startswith("/") or p.startswith("../") or "/../" in p:
+            warnings.append(f"Unsafe path in package: {p}")
+            continue
+        top = p.split("/", 1)[0]
+        if top and top not in ALLOWED_TOP:
+            warnings.append(f"Unexpected top-level path: {top}")
+
+    if warnings:
+        print("Compatibility warnings:")
+        for w in warnings:
+            print(f"  - {w}")
+
+
+def tar_list(pkg_path: str) -> List[str]:
+    out = subprocess.check_output(
+        ["tar", "--zstd", "-tf", pkg_path],
+        text=True,
+        errors="ignore",
+    )
+    return [l for l in out.splitlines() if l]
+
+
+def tar_read(pkg_path: str, member: str) -> str:
+    return subprocess.check_output(
+        ["tar", "--zstd", "-xOf", pkg_path, member],
+        text=True,
+        errors="ignore",
+    )
+
+
+def install_pkg(pkg_path: str):
+    files = tar_list(pkg_path)
+    pkginfo = ""
+    if ".PKGINFO" in files:
+        pkginfo = tar_read(pkg_path, ".PKGINFO")
+
+    dep_list = []
+    name = ""
+    version = ""
+    for line in pkginfo.splitlines():
+        if line.startswith("pkgname = "):
+            name = line.split("=", 1)[1].strip()
+        if line.startswith("pkgver = "):
+            version = line.split("=", 1)[1].strip()
+        if line.startswith("depend = "):
+            dep_list.append(line.split("=", 1)[1].strip())
+
+    check_compatibility(dep_list, files)
+
+    for p in files:
+        if p.startswith("/") or p.startswith("../") or "/../" in p:
+            raise SystemExit(f"Unsafe path in package: {p}")
+
+    print(f"Installing {name} {version}")
+    subprocess.check_call(["tar", "--zstd", "-xpf", pkg_path, "-C", "/"])
+
+    if name:
+        os.makedirs(LOCAL_DIR, exist_ok=True)
+        meta_dir = os.path.join(LOCAL_DIR, f"{name}-{version}")
+        os.makedirs(meta_dir, exist_ok=True)
+        with open(os.path.join(meta_dir, "desc"), "w", encoding="utf-8") as f:
+            f.write("%NAME%\n")
+            f.write(f"{name}\n")
+            f.write("%VERSION%\n")
+            f.write(f"{version}\n")
+        with open(os.path.join(meta_dir, "files"), "w", encoding="utf-8") as f:
+            f.write("%FILES%\n")
+            for p in files:
+                if p.startswith("/"):
+                    p = p.lstrip("/")
+                f.write(f"{p}\n")
+
+
+def resolve_and_install(pkg: str, repo_index: Dict[str, Dict[str, List[str]]], installed: Dict[str, str]):
+    if pkg in installed:
+        return
+    if pkg not in repo_index:
+        raise SystemExit(f"Package not found in repos: {pkg}")
+
+    desc = repo_index[pkg]
+    filename = desc.get("FILENAME", [""])[0]
+    depends = desc.get("DEPENDS", [])
+
+    for dep in depends:
+        dep_name, _ = parse_dep_name(dep)
+        if dep_name and dep_name not in installed:
+            resolve_and_install(dep_name, repo_index, installed)
+
+    mirror = read_mirror()
+    repo = desc.get("REPO", [""])[0]
+    if not repo:
+        repo = "core"
+    base = mirror.replace("$repo", repo).replace("$arch", ARCH)
+    pkg_url = f"{base}/{filename}"
+
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    pkg_path = os.path.join(CACHE_DIR, filename)
+    if not os.path.exists(pkg_path):
+        print(f"Downloading {pkg_url}")
+        download(pkg_url, pkg_path)
+
+    install_pkg(pkg_path)
+    installed[pkg] = desc.get("VERSION", [""])[0]
+
+
+def build_repo_index() -> Dict[str, Dict[str, List[str]]]:
+    mirror = read_mirror()
+    index: Dict[str, Dict[str, List[str]]] = {}
+    os.makedirs(SYNC_DIR, exist_ok=True)
+    for repo in REPOS:
+        db = sync_repo_db(mirror, repo)
+        repo_pkgs = parse_repo_db(db)
+        for name, desc in repo_pkgs.items():
+            desc["REPO"] = [repo]
+            index[name] = desc
+    return index
+
+
+def main():
+    if len(sys.argv) < 3 or sys.argv[1] != "-S":
+        usage()
+
+    pkgs = sys.argv[2:]
+    repo_index = build_repo_index()
+    installed = get_installed()
+    for pkg in pkgs:
+        resolve_and_install(pkg, repo_index, installed)
+
+
+if __name__ == "__main__":
+    main()

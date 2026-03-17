@@ -24,11 +24,13 @@ class InstallPlan:
     filesystem: str
     mountpoint: str
     bootloader: str
+    boot_mode: str
     root_password: str
     username: str
     user_password: str
     desktop: str
     network: str
+    hostname: str
     arch_imports: str
 
 
@@ -75,11 +77,13 @@ def main():
     filesystem = Prompt.ask("Filesystem", choices=["ext4", "btrfs"], default="ext4")
     mountpoint = Prompt.ask("Mount point", default="/mnt")
     bootloader = Prompt.ask("Bootloader", choices=["grub"], default="grub")
+    boot_mode = Prompt.ask("Boot mode", choices=["uefi", "bios"], default="uefi")
     root_password = Prompt.ask("Root password", password=True)
     username = Prompt.ask("User name", default="maxis")
     user_password = Prompt.ask("User password", password=True)
     desktop = Prompt.ask("Desktop", choices=["none", "xfce", "kde"], default="none")
     network = Prompt.ask("Network", choices=["dhcp", "manual"], default="dhcp")
+    hostname = Prompt.ask("Hostname", default="maxisos")
     arch_imports = Prompt.ask("Import Arch PKGBUILDs", choices=["yes", "no"], default="yes")
 
     plan = InstallPlan(
@@ -91,11 +95,13 @@ def main():
         filesystem=filesystem,
         mountpoint=mountpoint,
         bootloader=bootloader,
+        boot_mode=boot_mode,
         root_password=root_password,
         username=username,
         user_password=user_password,
         desktop=desktop,
         network=network,
+        hostname=hostname,
         arch_imports=arch_imports,
     )
 
@@ -105,25 +111,36 @@ def main():
 
     if plan.partitioning == "automatic":
         run(["sgdisk", "--zap-all", plan.disk], execute)
-        run(["sgdisk", "-n", "1:0:+512M", "-t", "1:ef00", plan.disk], execute)
-        run(["sgdisk", "-n", "2:0:0", "-t", "2:8300", plan.disk], execute)
-        boot_part = part_path(plan.disk, 1)
-        root_part = part_path(plan.disk, 2)
+        if plan.boot_mode == "uefi":
+            run(["sgdisk", "-n", "1:0:+512M", "-t", "1:ef00", plan.disk], execute)
+            run(["sgdisk", "-n", "2:0:0", "-t", "2:8300", plan.disk], execute)
+            boot_part = part_path(plan.disk, 1)
+            root_part = part_path(plan.disk, 2)
+        else:
+            run(["sgdisk", "-n", "1:0:0", "-t", "1:8300", plan.disk], execute)
+            boot_part = ""
+            root_part = part_path(plan.disk, 1)
     else:
         console.print("Manual partitioning selected. Please partition and then enter boot/root partitions.")
-        boot_part = Prompt.ask("Boot partition (e.g. /dev/sda1)")
-        root_part = Prompt.ask("Root partition (e.g. /dev/sda2)")
+        if plan.boot_mode == "uefi":
+            boot_part = Prompt.ask("Boot partition (e.g. /dev/sda1)")
+            root_part = Prompt.ask("Root partition (e.g. /dev/sda2)")
+        else:
+            boot_part = ""
+            root_part = Prompt.ask("Root partition (e.g. /dev/sda1)")
 
     if plan.filesystem == "ext4":
         run(["mkfs.ext4", root_part], execute)
     else:
         run(["mkfs.btrfs", root_part], execute)
 
-    run(["mkfs.fat", "-F", "32", boot_part], execute)
+    if boot_part:
+        run(["mkfs.fat", "-F", "32", boot_part], execute)
     run(["mkdir", "-p", plan.mountpoint], execute)
     run(["mount", root_part, plan.mountpoint], execute)
     run(["mkdir", "-p", f"{plan.mountpoint}/boot"], execute)
-    run(["mount", boot_part, f"{plan.mountpoint}/boot"], execute)
+    if boot_part:
+        run(["mount", boot_part, f"{plan.mountpoint}/boot"], execute)
 
     # Prepare mkpkg repo config inside target root
     run(["mkdir", "-p", f"{plan.mountpoint}/etc/mkpkg"], execute)
@@ -159,6 +176,19 @@ def main():
     run(["chroot", plan.mountpoint, "ln", "-sf", f"/usr/share/zoneinfo/{plan.timezone}", "/etc/localtime"], execute)
     run(["chroot", plan.mountpoint, "locale-gen"], execute)
 
+    # Hostname and hosts
+    run(["/bin/sh", "-c", f"echo '{plan.hostname}' > {plan.mountpoint}/etc/hostname"], execute)
+    run(["/bin/sh", "-c", f"printf '%s\\n' '127.0.0.1\\tlocalhost' '::1\\tlocalhost' '127.0.1.1\\t{plan.hostname}.localdomain\\t{plan.hostname}' > {plan.mountpoint}/etc/hosts"], execute)
+
+    # Network configuration (systemd-networkd style)
+    run(["mkdir", "-p", f"{plan.mountpoint}/etc/systemd/network"], execute)
+    if plan.network == "dhcp":
+        run(["/bin/sh", "-c", f"printf '%s\\n' '[Match]' 'Name=en*' '' '[Network]' 'DHCP=yes' > {plan.mountpoint}/etc/systemd/network/20-wired.network"], execute)
+    else:
+        ip_addr = Prompt.ask("IP address (e.g. 192.168.1.100/24)")
+        gateway = Prompt.ask("Gateway (e.g. 192.168.1.1)")
+        dns = Prompt.ask("DNS (comma separated)", default="1.1.1.1,8.8.8.8")
+        run(["/bin/sh", "-c", f"printf '%s\\n' '[Match]' 'Name=en*' '' '[Network]' 'Address={ip_addr}' 'Gateway={gateway}' 'DNS={dns.replace(',', ' ')}' > {plan.mountpoint}/etc/systemd/network/20-wired.network"], execute)
     # Users
     run(["chroot", plan.mountpoint, "/bin/sh", "-c", f"echo 'root:{plan.root_password}' | chpasswd"], execute)
     run(["chroot", plan.mountpoint, "useradd", "-m", "-G", "wheel", "-s", "/bin/bash", plan.username], execute)
@@ -169,7 +199,10 @@ def main():
 
     # Bootloader
     if plan.bootloader == "grub":
-        run(["grub-install", "--target=x86_64-efi", "--efi-directory", f"{plan.mountpoint}/boot", "--bootloader-id", "MaxisOS"], execute)
+        if plan.boot_mode == "uefi":
+            run(["grub-install", "--target=x86_64-efi", "--efi-directory", f"{plan.mountpoint}/boot", "--bootloader-id", "MaxisOS"], execute)
+        else:
+            run(["grub-install", "--target=i386-pc", plan.disk], execute)
         run(["grub-mkconfig", "-o", f"{plan.mountpoint}/boot/grub/grub.cfg"], execute)
 
     console.print("\nInstall complete. You can now chroot and finish configuration.")

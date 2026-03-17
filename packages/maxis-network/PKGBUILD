@@ -1,0 +1,18 @@
+pkgname=maxis-network
+pkgver=1.0
+pkgrel=1
+pkgdesc="MaxisOS network meta-package"
+arch=('x86_64')
+license=('MIT')
+depends=(
+  iproute2
+  ping
+  curl
+  wget
+  networkmanager
+)
+
+package() {
+  install -d "$pkgdir/usr/share/maxisos"
+  printf '%s\n' "maxis-network" >> "$pkgdir/usr/share/maxisos/meta-packages"
+}

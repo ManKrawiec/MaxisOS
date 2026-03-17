@@ -1,0 +1,16 @@
+pkgname=maxis-utils
+pkgver=1.0
+pkgrel=1
+pkgdesc="MaxisOS utilities meta-package"
+arch=('x86_64')
+license=('MIT')
+depends=(
+  nano
+  vim
+  less
+)
+
+package() {
+  install -d "$pkgdir/usr/share/maxisos"
+  printf '%s\n' "maxis-utils" >> "$pkgdir/usr/share/maxisos/meta-packages"
+}

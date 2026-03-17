@@ -14,6 +14,7 @@ Commands:
   install <pkg|path.mkpkg>
   remove <pkg>
   update
+  verify
   search <term>
   list
 EOM
@@ -121,8 +122,42 @@ remove_pkg() {
 
 update_db() {
   mkdir -p "$ROOT$CACHE"
+  verify_repos
   echo "Repositories in $ROOT$REPO_CONF are treated as local filesystem repos."
   echo "To update, synchronize your /repo trees with your build outputs."
+}
+
+verify_repos() {
+  local errors=0
+  local repo
+  while read -r repo; do
+    [[ -d "$repo" ]] || continue
+    local pkg
+    for pkg in "$repo"/*.mkpkg; do
+      [[ -f "$pkg" ]] || continue
+      if ! tar -tf "$pkg" | grep -q '^metadata.json$'; then
+        echo "Invalid package (missing metadata.json): $pkg"
+        errors=$((errors+1))
+        continue
+      fi
+      if ! tar -tf "$pkg" | grep -q '^files/'; then
+        echo "Invalid package (missing files/): $pkg"
+        errors=$((errors+1))
+        continue
+      fi
+      local name
+      name="$(tar -xOf "$pkg" metadata.json 2>/dev/null | grep -oE '\"name\"\\s*:\\s*\"[^\"]+\"' | head -1 | sed -E 's/.*\"name\"\\s*:\\s*\"([^\"]+)\".*/\\1/')"
+      if [[ -z "$name" ]]; then
+        echo "Invalid package (metadata name missing): $pkg"
+        errors=$((errors+1))
+      fi
+    done
+  done < <(repos)
+
+  if [[ "$errors" -gt 0 ]]; then
+    echo "mkpkg verify failed with $errors error(s)"
+    exit 1
+  fi
 }
 
 search_pkgs() {
@@ -179,6 +214,9 @@ case "$cmd" in
     ;;
   update)
     update_db
+    ;;
+  verify)
+    verify_repos
     ;;
   search)
     search_pkgs "${2:-}"

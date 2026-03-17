@@ -19,6 +19,7 @@ package.mkpkg
 - `mkpkg install <pkg|path.mkpkg>`
 - `mkpkg remove <pkg>`
 - `mkpkg update`
+- `mkpkg verify`
 - `mkpkg search <term>`
 - `mkpkg list`
 
@@ -40,3 +41,8 @@ mkpkg --root /mnt install <pkg>
 - Missing package: verify `.mkpkg` exists in repo paths.
 - Corrupt package: rebuild with `mkbuild` and re-publish.
 - Files missing: reinstall the package.
+
+## Arch Compatibility
+Arch packages are handled by a separate installer (`pacman`) under the
+compatibility layer. It uses `/var/lib/pacman` and is independent from
+`mkpkg`.

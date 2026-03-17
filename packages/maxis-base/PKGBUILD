@@ -1,0 +1,28 @@
+pkgname=maxis-base
+pkgver=1.0
+pkgrel=1
+pkgdesc="MaxisOS base meta-package"
+arch=('x86_64')
+license=('MIT')
+depends=(
+  bash
+  coreutils
+  grep
+  sed
+  gawk
+  tar
+  gzip
+  xz
+  diffutils
+  findutils
+  file
+  which
+  sudo
+  shadow
+  util-linux
+)
+
+package() {
+  install -d "$pkgdir/usr/share/maxisos"
+  printf '%s\n' "maxis-base" > "$pkgdir/usr/share/maxisos/meta-packages"
+}

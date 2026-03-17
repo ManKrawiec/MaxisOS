@@ -10,6 +10,7 @@ This repository is under active development. Expect incomplete features, breakin
 - Kernel configure/build/install scripts
 - `mkpkg` package manager and `.mkpkg` format
 - `mkbuild` PKGBUILD‑style builder
+- Arch compatibility layer (`pacman`) for `.pkg.tar.zst`
 - Example PKGBUILDs and local repo layout
 - `maxinstall` terminal installer (prototype)
 - Live ISO build script (prototype)

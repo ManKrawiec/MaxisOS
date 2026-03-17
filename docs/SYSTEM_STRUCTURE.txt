@@ -5,9 +5,15 @@
 |-- etc
 |-- home
 |-- lib
+|-- lib64
+|-- media
+|-- mnt
+|-- opt
 |-- proc
 |-- root
+|-- run
 |-- sbin
+|-- srv
 |-- sys
 |-- tmp
 |-- usr

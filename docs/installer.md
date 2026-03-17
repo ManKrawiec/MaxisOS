@@ -5,12 +5,14 @@
 ## Features
 - Disk detection via `lsblk`
 - Automatic or manual partitioning
+- Boot mode selection (UEFI or BIOS)
 - Filesystem selection (ext4/btrfs)
 - Base system install via `mkpkg`
 - Kernel install
 - Locale/timezone/keyboard configuration
 - User creation
-- GRUB bootloader installation
+- Hostname and basic network configuration
+- GRUB bootloader installation (UEFI or BIOS)
 
 ## Usage
 Run inside the live environment:

@@ -12,11 +12,14 @@ mkdir -p "$ROOTFS" "$WORKDIR/boot/grub"
 "$ISO_DIR/../base-system/prepare-rootfs.sh" "$ROOTFS"
 
 # Install tools into rootfs (placeholder copy)
-mkdir -p "$ROOTFS/usr/bin" "$ROOTFS/bin" "$ROOTFS/scripts" "$ROOTFS/repo/extra" "$ROOTFS/repo/extra-sources"
+mkdir -p "$ROOTFS/usr/bin" "$ROOTFS/usr/lib/maxisos/arch-compat" "$ROOTFS/bin" "$ROOTFS/scripts" "$ROOTFS/repo/extra" "$ROOTFS/repo/extra-sources" "$ROOTFS/etc/pacman.d"
 install -m 0755 "$ISO_DIR/../mkpkg/mkpkg" "$ROOTFS/usr/bin/mkpkg"
 install -m 0755 "$ISO_DIR/../mkbuild/mkbuild" "$ROOTFS/usr/bin/mkbuild"
 install -m 0755 "$ISO_DIR/../installer/maxinstall.py" "$ROOTFS/usr/bin/maxinstall"
 install -m 0755 "$ISO_DIR/../scripts/import-arch-pkgbuild.sh" "$ROOTFS/scripts/import-arch-pkgbuild.sh"
+install -m 0755 "$ISO_DIR/../arch-compat/pacman" "$ROOTFS/usr/lib/maxisos/arch-compat/pacman"
+ln -sf /usr/lib/maxisos/arch-compat/pacman "$ROOTFS/usr/bin/pacman"
+install -m 0644 "$ISO_DIR/../arch-compat/mirrorlist.example" "$ROOTFS/etc/pacman.d/mirrorlist"
 
 # Provide bash if available on host
 if [[ -x /bin/bash ]]; then
